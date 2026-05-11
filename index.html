@@ -276,7 +276,7 @@ html, body { min-height: 100%; background: #fff; font-family: -apple-system, 'Se
       <button class="pbtn" data-n="7">7</button><button class="pbtn" data-n="8">8</button><button class="pbtn" data-n="9">9</button>
       <button class="pbtn sm" data-n="del">wis</button><button class="pbtn" data-n="0">0</button><button class="pbtn sm" data-n="clr">✕</button>
     </div>
-    <div class="login-hint">Demo: <strong>1111</strong> Medewerker &nbsp;·&nbsp; <strong>3333</strong> Manager &nbsp;·&nbsp; <strong>4444</strong> Eigenaar</div>
+    
   </div>
 </div>
 
@@ -296,16 +296,23 @@ html, body { min-height: 100%; background: #fff; font-family: -apple-system, 'Se
       <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
       Kasafroming
     </button>
+    <button class="bnav-btn" data-tab="klachten" id="bnav-klachten">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Klachten
+    </button>
+    <button class="bnav-btn" data-tab="overzicht" id="bnav-overzicht" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Overzicht
+    </button>
   </nav>
 </div>
 
 <script>
 // ════ CONFIG ════════════════════════════════════════
 const USERS = {
-  '1111':{name:'Medewerker',role:'medewerker',lvl:1},
-  '2222':{name:'Bezorger',role:'bezorger',lvl:1},
-  '3333':{name:'Manager',role:'manager',lvl:3},
-  '4444':{name:'Eigenaar',role:'eigenaar',lvl:4}
+  '3333':{name:'Medewerker',role:'medewerker',lvl:1},
+  '2518':{name:'Manager',role:'manager',lvl:3},
+  '3155':{name:'Eigenaar',role:'eigenaar',lvl:4}
 };
 // Openingsdagen: 0=zo, 3=wo, 4=do, 5=vr, 6=za
 const OPEN_DAYS = new Set([0, 3, 4, 5, 6]);
@@ -506,6 +513,9 @@ function showApp(){
   document.getElementById('app').classList.add('active');
   document.getElementById('rtag').textContent=user.role.charAt(0).toUpperCase()+user.role.slice(1);
   document.getElementById('uname').textContent=user.name;
+  document.getElementById('bnav-overzicht').style.display=user.lvl>=3?'flex':'none';
+  // Update klacht badge on load
+  updateKlachtBadge();
   switchTab('pin');
 }
 
@@ -523,7 +533,7 @@ function switchTab(tab){
   });
   renderContent();
 }
-function renderContent(){ if(activeTab==='pin') renderPin(); else renderKas(); }
+function renderContent(){ if(activeTab==='pin') renderPin(); else if(activeTab==='kas') renderKas(); else if(activeTab==='klachten') renderKlachten(); else renderOverzicht(); }
 
 // ════ PINCONTROLE ═════════════════════════════════════
 async function renderPin(){
@@ -544,23 +554,35 @@ async function renderPin(){
 async function renderPinTx(tc){
   const data=await dbLoad('pin:'+dKey(pinDate))||{txs:Array(10).fill(''),opmerking:'',bonnen:[],saved:false};
   const total=data.txs.reduce((s,v)=>s+(parseFloat(v)||0),0);
+  // Support dynamic number of tx fields (min 10)
+  const numTx = Math.max(10, data.txs.length);
   let cells='';
-  for(let i=0;i<10;i++){
+  for(let i=0;i<numTx;i++){
     const v=data.txs[i]||''; const has=(parseFloat(v)||0)>0;
     cells+=`<div class="tx-cell${has?' has-val':''}"><label>Trans. ${i+1}</label>
       <div class="euro-wrap"><span class="esym">€</span>
         <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="0,00" value="${v}" data-idx="${i}" ${data.saved?'readonly':''}></div></div>`;
   }
   tc.innerHTML=`${renderDateNav(pinDate)}
-    ${data.saved?`<div class="saved-bar"><strong>Afgetekend ✓</strong>Door ${data.savedBy||'—'} om ${data.savedAt||'—'}</div>`:''}
+    ${data.saved?`<div class="saved-bar"><strong>Afgetekend ✓</strong>Door ${data.savedBy||'—'} om ${data.savedAt||'—'}</div>
+    <button class="clear-btn" style="width:100%;margin-bottom:.75rem;font-size:13px;" id="pin-corr-btn">✏️ Correctie doorvoeren</button>`:''}
     <div class="totaal-card"><div class="totaal-label">Totaal dag</div><div class="totaal-val" id="ptot">€ ${fmt2(total)}</div></div>
     <div class="tx-grid" id="txgrid">${cells}</div>
+    ${!data.saved?`<button class="add-bon-btn" id="add-tx-btn" style="margin-bottom:.75rem;">+ Extra transactie toevoegen</button>`:''}
     <div class="opmerking-box">
       <label class="warn-label">⚠ Opmerking — schrijf bonnummer bij afwijkingen</label>
       <textarea id="popm" rows="2" placeholder="Bijv: bon 80 – cadeaubon + €17 gepind..." ${data.saved?'readonly':''}>${data.opmerking||''}</textarea>
     </div>
     ${!data.saved?`<div class="action-row"><button class="clear-btn" id="pcbtn">Wissen</button><button class="save-btn" id="psbtn">Dag opslaan ✓</button></div>`:''}`;
   bindDateNav(pinDate, d=>pinDate=d, ()=>renderPinTx(tc));
+  const corrBtn=document.getElementById('pin-corr-btn');
+  if(corrBtn) corrBtn.addEventListener('click',async()=>{
+    if(!confirm('Weet je zeker dat je deze dag wil heropenen voor correctie?')) return;
+    const ex=await dbLoad('pin:'+dKey(pinDate))||{};
+    ex.saved=false; ex.savedBy=''; ex.savedAt='';
+    await dbSave('pin:'+dKey(pinDate),ex);
+    await renderPinTx(tc);
+  });
   if(!data.saved){
     tc.querySelectorAll('#txgrid input').forEach(inp=>{
       inp.addEventListener('input',()=>{
@@ -580,6 +602,18 @@ async function renderPinTx(tc){
       tc.querySelectorAll('#txgrid input').forEach(i=>{i.value='';i.closest('.tx-cell').classList.remove('has-val');});
       document.getElementById('popm').value='';
       document.getElementById('ptot').textContent='€ 0,00';
+    });
+    // Add extra transaction field
+    const addTxBtn=document.getElementById('add-tx-btn');
+    if(addTxBtn) addTxBtn.addEventListener('click', async ()=>{
+      const ex=await dbLoad('pin:'+dKey(pinDate))||{txs:Array(10).fill(''),opmerking:'',bonnen:[],saved:false};
+      // Save current values first
+      const txs=[]; tc.querySelectorAll('#txgrid input').forEach(i=>txs.push(i.value));
+      ex.txs=txs; ex.opmerking=document.getElementById('popm').value||'';
+      // Add one more empty slot
+      ex.txs.push('');
+      await dbSave('pin:'+dKey(pinDate),ex);
+      await renderPinTx(tc);
     });
   }
 }
@@ -684,11 +718,16 @@ async function renderPinMgr(tc){
 }
 
 // ════ KASAFROMING ════════════════════════════════════
+// Standaard samenstelling na afroming (per portemonnee en kassa)
+// 1x€20 · 2x€10 · 2x€5 = €60
+const KAS_STD_OMSCHRIJVING = '1×€20 · 2×€10 · 2×€5';
+const KAS_STD_BEDRAG = 60;
+
 async function renderKas(){
   const c=document.getElementById('content');
   const tabs=user.lvl>=3
-    ?[{k:'dag',l:'Dagafsluiting'},{k:'week',l:'Weekafsluiting'},{k:'overzicht',l:'Overzicht'}]
-    :[{k:'dag',l:'Dagafsluiting'},{k:'week',l:'Weekafsluiting'}];
+    ?[{k:'dag',l:'Dagafsluiting'},{k:'week',l:'Weekafsluiting (maandag)'},{k:'overzicht',l:'Overzicht'}]
+    :[{k:'dag',l:'Dagafsluiting'},{k:'week',l:'Weekafsluiting (maandag)'}];
   c.innerHTML=`<div class="mod-title">Kasafroming</div>
     <div class="mod-tab-row">${tabs.map(t=>`<button class="mod-tab ${kasSubTab===t.k?'on':''}" data-kt="${t.k}">${t.l}</button>`).join('')}</div>
     <div id="ktc"></div>`;
@@ -700,126 +739,228 @@ async function renderKas(){
 }
 
 function calcKas(d){
-  const es=parseFloat(d.eindstand)||0, afg=Math.max(0,es-KAS_WISSEL);
+  const es=parseFloat(d.eindstand)||0, afg=Math.max(0,es-KAS_STD_BEDRAG);
   const p1=parseFloat(d.pm1)||0,p2=parseFloat(d.pm2)||0,p3=parseFloat(d.pm3)||0;
   const tot=afg+p1+p2+p3, vw=parseFloat(d.verwacht)||0;
   return {es,afg,p1,p2,p3,tot,vw,verschil:vw>0?(tot-vw):null};
 }
 
 async function renderKasDag(tc){
-  const data=await dbLoad('kas:'+dKey(kasDate))||{eindstand:'',pm1:'',pm2:'',pm3:'',verwacht:'',opmerking:'',saved:false};
-  const t=calcKas(data);
-  const vCls=t.verschil===null?'zero':t.verschil>=0?'pos':'neg';
-  const vTxt=t.verschil===null?'—':(t.verschil>=0?'+':'')+fmt2(t.verschil);
-  const bCls=t.verschil===null?'neutraal':t.verschil>=0?'positief':'negatief';
-  const pmCls=v=>{const n=parseFloat(v)||0;return n===0?'':Math.abs(n-PM_STD)<0.01?'ok':'short';};
-  tc.innerHTML=`${renderDateNav(kasDate)}
-    ${data.saved?`<div class="saved-bar"><strong>Afgeroomd ✓</strong>Door ${data.savedBy||'—'} om ${data.savedAt||'—'}</div>`:''}
+  const data=await dbLoad('kas:'+dKey(kasDate))||{
+    pm1:'',pm2:'',pm3:'',kassa:'',
+    afr50_pm:'',afr20_pm:'',afr50_kas:'',afr20_kas:'',
+    opmerking:'',saved:false
+  };
+
+  // Calc afgeroomd briefjes totaal
+  const afr = (parseFloat(data.afr50_pm)||0)*50 + (parseFloat(data.afr20_pm)||0)*20 +
+              (parseFloat(data.afr50_kas)||0)*50 + (parseFloat(data.afr20_kas)||0)*20;
+
+  tc.innerHTML=`
+    ${renderDateNav(kasDate)}
+    ${data.saved?`<div class="saved-bar"><strong>Afgetekend ✓</strong>Door ${data.savedBy||'—'} om ${data.savedAt||'—'}</div>
+    <button class="clear-btn" style="width:100%;margin-bottom:.75rem;font-size:13px;" id="kas-corr-btn">✏️ Correctie doorvoeren</button>`:''}
+
+    <!-- BRIEFJES AFROMEN -->
     <div class="section-card">
-      <div class="sh">Kassa <span class="badge">Wisselgeld € ${fmt2(KAS_WISSEL)} blijft staan</span></div>
-      <div class="field-row">
-        <div class="field"><label>Eindstand kassa</label><div class="inp-wrap"><span>€</span><input type="number" inputmode="decimal" step="0.01" id="es" placeholder="0,00" value="${data.eindstand}" ${data.saved?'readonly':''}></div></div>
-        <div class="field computed"><label>Afgeroomd (auto)</label><div class="inp-wrap"><span>€</span><input type="text" id="afg" value="${fmt2(t.afg)}" readonly></div></div>
+      <div class="sh">Briefjes afromen <span class="badge">€50 en €20 eruit — apart neerleggen</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:.875rem;">Haal alle €50 en overtollige €20 biljetten eruit. Laat per portemonnee/kassa staan: <strong>${KAS_STD_OMSCHRIJVING}</strong></div>
+      <div class="field-row" style="margin-bottom:.5rem;">
+        <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);padding:.5rem 0;">Portemonnees</div>
+        <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);padding:.5rem 0;">Kassa</div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Verwacht contant totaal</label><div class="inp-wrap"><span>€</span><input type="number" inputmode="decimal" step="0.01" id="vw" placeholder="optioneel" value="${data.verwacht}" ${data.saved?'readonly':''}></div></div>
+        <div class="field"><label>Aantal €50 biljetten</label>
+          <div class="inp-wrap"><span>×</span><input type="number" inputmode="numeric" min="0" id="afr50_pm" placeholder="0" value="${data.afr50_pm}" ${data.saved?'readonly':''}></div></div>
+        <div class="field"><label>Aantal €50 biljetten</label>
+          <div class="inp-wrap"><span>×</span><input type="number" inputmode="numeric" min="0" id="afr50_kas" placeholder="0" value="${data.afr50_kas}" ${data.saved?'readonly':''}></div></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Aantal extra €20 biljetten</label>
+          <div class="inp-wrap"><span>×</span><input type="number" inputmode="numeric" min="0" id="afr20_pm" placeholder="0" value="${data.afr20_pm}" ${data.saved?'readonly':''}></div></div>
+        <div class="field"><label>Aantal extra €20 biljetten</label>
+          <div class="inp-wrap"><span>×</span><input type="number" inputmode="numeric" min="0" id="afr20_kas" placeholder="0" value="${data.afr20_kas}" ${data.saved?'readonly':''}></div></div>
+      </div>
+      ${afr>0||data.saved?`<div style="background:var(--gold-bg);border:0.5px solid var(--gold-bdr);border-radius:8px;padding:.75rem 1rem;margin-top:.75rem;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:12px;color:#8B6914;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Totaal afgeroomd</div>
+        <div style="font-size:22px;font-weight:400;color:var(--gold-txt)" id="afr-tot">€ ${fmt2(afr)}</div>
+      </div>`:'<div id="afr-tot-wrap"></div>'}
+    </div>
+
+    <!-- EINDSTAND INVULLEN -->
+    <div class="section-card">
+      <div class="sh">Eindstand na afroming <span class="badge">Standaard ${KAS_STD_OMSCHRIJVING}</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:.875rem;">Wat zit er nog in na het eruit halen van de briefjes?</div>
+      <div class="pm-grid-3" style="margin-bottom:8px;">
+        ${[1,2,3].map(i=>{
+          const v=data['pm'+i]||'';
+          const n=parseFloat(v)||0;
+          const cls=n===0?'':Math.abs(n-KAS_STD_BEDRAG)<0.01?'ok':'short';
+          return `<div class="pm-cell ${cls}" id="pmc${i}">
+            <div class="pm-lbl">Portemonnee ${i}</div>
+            <div class="pm-std">Std: € ${fmt2(KAS_STD_BEDRAG)}</div>
+            <div class="pm-e">€</div>
+            <input type="number" inputmode="decimal" step="0.01" id="pm${i}" placeholder="0,00" value="${v}" ${data.saved?'readonly':''}>
+            ${n>0&&Math.abs(n-KAS_STD_BEDRAG)>0.01?`<div style="font-size:11px;margin-top:4px;color:${n<KAS_STD_BEDRAG?'var(--red)':'var(--green-txt)'}">Verschil: € ${(n-KAS_STD_BEDRAG>0?'+':'')+fmt2(n-KAS_STD_BEDRAG)}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Kassa eindstand</label>
+          <div class="inp-wrap"><span>€</span><input type="number" inputmode="decimal" step="0.01" id="kassa" placeholder="0,00" value="${data.kassa}" ${data.saved?'readonly':''}></div></div>
+        <div class="field computed"><label>Totaal geteld (auto)</label>
+          <div class="inp-wrap"><span>€</span><input type="text" id="totgeteld" value="${fmt2((parseFloat(data.pm1)||0)+(parseFloat(data.pm2)||0)+(parseFloat(data.pm3)||0)+(parseFloat(data.kassa)||0))}" readonly></div></div>
       </div>
     </div>
-    <div class="section-card">
-      <div class="sh">Portemonnees <span class="badge">Standaard € ${fmt2(PM_STD)} p/st</span></div>
-      <div class="pm-grid-3">${[1,2,3].map(i=>{
-        const v=data['pm'+i]||'',diff=(parseFloat(v)||0)-PM_STD;
-        return `<div class="pm-cell ${pmCls(v)}" id="pmc${i}">
-          <div class="pm-lbl">Portemonnee ${i}</div><div class="pm-std">Std: € ${fmt2(PM_STD)}</div>
-          <div class="pm-e">€</div>
-          <input type="number" inputmode="decimal" step="0.01" id="pm${i}" placeholder="0,00" value="${v}" ${data.saved?'readonly':''}>
-          ${(parseFloat(v)||0)>0&&Math.abs(diff)>0.01?`<div style="font-size:11px;margin-top:4px;color:${diff<0?'var(--red)':'var(--green-txt)'}">Verschil: € ${diff>0?'+':''}${fmt2(diff)}</div>`:''}
-        </div>`;}).join('')}</div>
+
+    <div class="opmerking-box">
+      <label>Opmerking ontbrekend muntgeld / bijzonderheden</label>
+      <textarea id="kopm" rows="2" placeholder="Bijv: weinig €2 munten, portemonnee 2 tekort €5..." ${data.saved?'readonly':''}>${data.opmerking||''}</textarea>
     </div>
-    <div class="totaal-blok ${bCls}" id="kblok">
-      <div class="tot-row"><div class="tl">Kas afgeroomd</div><div class="tv" id="tkv">€ ${fmt2(t.afg)}</div></div>
-      <div class="tot-row"><div class="tl">Portemonnee 1</div><div class="tv" id="tp1">€ ${fmt2(t.p1)}</div></div>
-      <div class="tot-row"><div class="tl">Portemonnee 2</div><div class="tv" id="tp2">€ ${fmt2(t.p2)}</div></div>
-      <div class="tot-row"><div class="tl">Portemonnee 3</div><div class="tv" id="tp3">€ ${fmt2(t.p3)}</div></div>
-      <div class="tot-row highlight"><div class="tl">Totaal contant</div><div class="tv zero" id="ttot">€ ${fmt2(t.tot)}</div></div>
-      <div id="vrow">${t.vw>0?`<div class="tot-row highlight"><div class="tl">Verschil</div><div class="tv ${vCls}">€ ${vTxt}</div></div>`:''}</div>
-    </div>
-    <div class="opmerking-box"><label>Opmerking / toelichting</label><textarea id="kopm" rows="2" placeholder="Bijv: PM2 had €10 te weinig..." ${data.saved?'readonly':''}>${data.opmerking||''}</textarea></div>
-    ${!data.saved?`<div class="action-row"><button class="clear-btn" id="kcbtn">Wissen</button><button class="save-btn" id="ksbtn">Afroming opslaan ✓</button></div>`:''}`;
+
+    ${!data.saved?`<div class="action-row"><button class="clear-btn" id="kcbtn">Wissen</button><button class="save-btn" id="ksbtn">Aftekenen ✓</button></div>`:''}
+  `;
+
   bindDateNav(kasDate, d=>kasDate=d, ()=>renderKasDag(tc));
+  const kasCorrBtn=document.getElementById('kas-corr-btn');
+  if(kasCorrBtn) kasCorrBtn.addEventListener('click',async()=>{
+    if(!confirm('Weet je zeker dat je deze dag wil heropenen voor correctie?')) return;
+    const ex=await dbLoad('kas:'+dKey(kasDate))||{};
+    ex.saved=false; ex.savedBy=''; ex.savedAt='';
+    await dbSave('kas:'+dKey(kasDate),ex);
+    await renderKasDag(tc);
+  });
   if(!data.saved){
-    function recalc(){
-      const es=parseFloat(document.getElementById('es').value)||0;
-      const afg=Math.max(0,es-KAS_WISSEL);
+    function recalcKas(){
       const p1=parseFloat(document.getElementById('pm1').value)||0;
       const p2=parseFloat(document.getElementById('pm2').value)||0;
       const p3=parseFloat(document.getElementById('pm3').value)||0;
-      const vw=parseFloat(document.getElementById('vw').value)||0;
-      const tot=afg+p1+p2+p3; const ver=vw>0?(tot-vw):null;
-      document.getElementById('afg').value=fmt2(afg);
-      document.getElementById('tkv').textContent='€ '+fmt2(afg);
-      document.getElementById('tp1').textContent='€ '+fmt2(p1);
-      document.getElementById('tp2').textContent='€ '+fmt2(p2);
-      document.getElementById('tp3').textContent='€ '+fmt2(p3);
-      document.getElementById('ttot').textContent='€ '+fmt2(tot);
-      document.getElementById('kblok').className='totaal-blok '+(ver===null?'neutraal':ver>=0?'positief':'negatief');
-      document.getElementById('vrow').innerHTML=vw>0?`<div class="tot-row highlight"><div class="tl">Verschil</div><div class="tv ${ver>=0?'pos':'neg'}">€ ${(ver>=0?'+':'')+fmt2(ver)}</div></div>`:'';
-      [1,2,3].forEach(i=>{const v=[p1,p2,p3][i-1];document.getElementById('pmc'+i).className='pm-cell '+(v===0?'':Math.abs(v-PM_STD)<0.01?'ok':'short');});
+      const ka=parseFloat(document.getElementById('kassa').value)||0;
+      document.getElementById('totgeteld').value=fmt2(p1+p2+p3+ka);
+      [1,2,3].forEach(i=>{
+        const v=[p1,p2,p3][i-1];
+        document.getElementById('pmc'+i).className='pm-cell '+(v===0?'':Math.abs(v-KAS_STD_BEDRAG)<0.01?'ok':'short');
+      });
+
+      const a50pm=parseFloat(document.getElementById('afr50_pm').value)||0;
+      const a20pm=parseFloat(document.getElementById('afr20_pm').value)||0;
+      const a50kas=parseFloat(document.getElementById('afr50_kas').value)||0;
+      const a20kas=parseFloat(document.getElementById('afr20_kas').value)||0;
+      const afrTot=a50pm*50+a20pm*20+a50kas*50+a20kas*20;
+
+      const wrap=document.getElementById('afr-tot-wrap');
+      const totEl=document.getElementById('afr-tot');
+      if(afrTot>0){
+        if(totEl) totEl.textContent='€ '+fmt2(afrTot);
+        else if(wrap) wrap.innerHTML=`<div style="background:var(--gold-bg);border:0.5px solid var(--gold-bdr);border-radius:8px;padding:.75rem 1rem;margin-top:.75rem;display:flex;justify-content:space-between;align-items:center;"><div style="font-size:12px;color:#8B6914;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Totaal afgeroomd</div><div style="font-size:22px;font-weight:400;color:var(--gold-txt)" id="afr-tot">€ ${fmt2(afrTot)}</div></div>`;
+      }
     }
-    ['es','pm1','pm2','pm3','vw'].forEach(id=>document.getElementById(id).addEventListener('input',recalc));
+    ['pm1','pm2','pm3','kassa','afr50_pm','afr20_pm','afr50_kas','afr20_kas'].forEach(id=>document.getElementById(id).addEventListener('input',recalcKas));
+
     document.getElementById('ksbtn').addEventListener('click',async()=>{
       const now=new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
-      await dbSave('kas:'+dKey(kasDate),{eindstand:document.getElementById('es').value,pm1:document.getElementById('pm1').value,pm2:document.getElementById('pm2').value,pm3:document.getElementById('pm3').value,verwacht:document.getElementById('vw').value,opmerking:document.getElementById('kopm').value,saved:true,savedBy:user.name,savedAt:now});
+      await dbSave('kas:'+dKey(kasDate),{
+        pm1:document.getElementById('pm1').value,
+        pm2:document.getElementById('pm2').value,
+        pm3:document.getElementById('pm3').value,
+        kassa:document.getElementById('kassa').value,
+        afr50_pm:document.getElementById('afr50_pm').value,
+        afr20_pm:document.getElementById('afr20_pm').value,
+        afr50_kas:document.getElementById('afr50_kas').value,
+        afr20_kas:document.getElementById('afr20_kas').value,
+        opmerking:document.getElementById('kopm').value,
+        saved:true,savedBy:user.name,savedAt:now
+      });
       await renderKasDag(tc);
     });
-    document.getElementById('kcbtn').addEventListener('click',()=>{['es','pm1','pm2','pm3','vw'].forEach(id=>document.getElementById(id).value='');document.getElementById('kopm').value='';recalc();});
+    document.getElementById('kcbtn').addEventListener('click',()=>{
+      ['pm1','pm2','pm3','kassa','afr50_pm','afr20_pm','afr50_kas','afr20_kas'].forEach(id=>document.getElementById(id).value='');
+      document.getElementById('kopm').value='';
+      recalcKas();
+    });
   }
 }
 
 async function renderKasWeek(tc){
-  const wk='kasweek:'+dKey(kasDate).slice(0,8)+'00';
+  // Week key: maandag van die week
+  const mon=new Date(kasDate); mon.setDate(mon.getDate()-((mon.getDay()+6)%7));
+  const wk='kasweek:'+dKey(mon);
   const saved=await dbLoad(wk);
-  if(!weekSt[wk]){weekSt[wk]={};BLOKKEN.forEach(b=>{weekSt[wk][b.id]=b.sam.map(r=>saved&&saved[b.id]?saved[b.id][r.label]??r.standaard:r.standaard);});}
-  const ws=weekSt[wk]; const isSaved=saved&&saved.saved;
-  function buildBlokken(){
-    return BLOKKEN.map(b=>{
-      const tot=ws[b.id].reduce((s,n,i)=>s+n*b.sam[i].waarde,0);
-      const std=b.sam.reduce((s,r)=>s+r.waarde*r.standaard,0);
-      const rows=b.sam.map((r,i)=>{
-        const h=ws[b.id][i],tekort=h<r.standaard;
-        return `<div class="coupon-row${tekort?' tekort':''}">
-          <div class="col-coup">${r.label}</div><div class="col-std">${r.standaard}× std</div>
-          <div class="col-huid">
-            ${!isSaved?`<button class="qty-btn" data-blok="${b.id}" data-idx="${i}" data-act="min">−</button>`:''}
-            <div class="qty-val">${h}</div>
-            ${!isSaved?`<button class="qty-btn" data-blok="${b.id}" data-idx="${i}" data-act="plus">+</button>`:''}
-          </div>
-          <div class="col-wrd">€ ${fmt2(h*r.waarde)}</div>
-          <div class="col-stat">${tekort?`<span class="tekort-badge">−${r.standaard-h}</span>`:`<span class="ok-badge">✓</span>`}</div>
-        </div>`;
-      }).join('');
-      return `<div class="pm-block"><div class="pm-header"><div class="pm-name">${b.naam}</div><div class="pm-tot">€ ${fmt2(tot)} <span style="font-size:11px;color:var(--hint);font-weight:400">/ std € ${fmt2(std)}</span></div></div>${rows}</div>`;
-    }).join('');
-  }
-  tc.innerHTML=`<div class="week-info"><strong>Portemonnees en kassa aanvullen</strong>Gebruik + en − per coupure. Tekorten worden rood gemarkeerd.</div>
+  const isSaved=saved&&saved.saved;
+
+  tc.innerHTML=`
+    <div class="week-info"><strong>Weekafsluiting — maandag</strong>Vergelijk het afgeroomde bedrag met de Foodticket-berekening.</div>
     ${isSaved?`<div class="saved-bar"><strong>Afgetekend ✓</strong>Door ${saved.savedBy||'—'}</div>`:''}
-    <div id="wblokken">${buildBlokken()}</div>
-    <div class="opmerking-box"><label>Opmerking / wisselgeld bestellen</label><textarea id="wopm" rows="2" placeholder="Bijv: te weinig €2 munten — wisselgeld bestellen voor volgende week..." ${isSaved?'readonly':''}>${saved&&saved.opmerking||''}</textarea></div>
-    ${!isSaved?`<div class="action-row"><button class="clear-btn" id="wreset">Reset</button><button class="save-btn" id="wsave">Weekafsluiting opslaan ✓</button></div>`:''}`;
-  function bindQty(){tc.querySelectorAll('.qty-btn').forEach(btn=>btn.addEventListener('click',()=>{
-    const b2=btn.dataset.blok,idx=parseInt(btn.dataset.idx),act=btn.dataset.act;
-    if(act==='plus')ws[b2][idx]++; else if(act==='min'&&ws[b2][idx]>0)ws[b2][idx]--;
-    document.getElementById('wblokken').innerHTML=buildBlokken(); bindQty();
-  }));}
-  bindQty();
-  const ws2=document.getElementById('wsave');
-  if(ws2) ws2.addEventListener('click',async()=>{
-    const sd={saved:true,savedBy:user.name,opmerking:document.getElementById('wopm').value};
-    BLOKKEN.forEach(b=>{sd[b.id]={};b.sam.forEach((r,i)=>{sd[b.id][r.label]=ws[b.id][i];});});
-    await dbSave(wk,sd);delete weekSt[wk];await renderKasWeek(tc);
-  });
-  const wr=document.getElementById('wreset');
-  if(wr) wr.addEventListener('click',async()=>{await dbSave(wk,{});delete weekSt[wk];await renderKasWeek(tc);});
+
+    <div class="section-card">
+      <div class="sh">Foodticket berekening</div>
+      <div class="field-row">
+        <div class="field"><label>Contante omzet (Foodticket)</label>
+          <div class="inp-wrap"><span>€</span><input type="number" inputmode="decimal" step="0.01" id="ft-omzet" placeholder="0,00" value="${saved?.ft_omzet||''}" ${isSaved?'readonly':''}></div></div>
+        <div class="field"><label>Contante bonnen (aftrek)</label>
+          <div class="inp-wrap"><span>€</span><input type="number" inputmode="decimal" step="0.01" id="ft-bonnen" placeholder="0,00" value="${saved?.ft_bonnen||''}" ${isSaved?'readonly':''}></div></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Cadeaubonnen (aftrek)</label>
+          <div class="inp-wrap"><span>€</span><input type="number" inputmode="decimal" step="0.01" id="ft-cadeaubon" placeholder="0,00" value="${saved?.ft_cadeaubon||''}" ${isSaved?'readonly':''}></div></div>
+        <div class="field computed"><label>Verwacht bedrag (auto)</label>
+          <div class="inp-wrap"><span>€</span><input type="text" id="ft-verwacht" value="${saved?fmt2((parseFloat(saved.ft_omzet)||0)-(parseFloat(saved.ft_bonnen)||0)-(parseFloat(saved.ft_cadeaubon)||0)):'0,00'}" readonly></div></div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="sh">Afgeroomd bedrag</div>
+      <div class="field-row">
+        <div class="field"><label>Totaal afgeroomd deze week</label>
+          <div class="inp-wrap"><span>€</span><input type="number" inputmode="decimal" step="0.01" id="afgeroomd" placeholder="0,00" value="${saved?.afgeroomd||''}" ${isSaved?'readonly':''}></div></div>
+        <div class="field computed"><label>Verschil</label>
+          <div class="inp-wrap" id="verschil-wrap" style="${saved&&Math.abs((parseFloat(saved.afgeroomd)||0)-((parseFloat(saved.ft_omzet)||0)-(parseFloat(saved.ft_bonnen)||0)-(parseFloat(saved.ft_cadeaubon)||0)))>0.01?'background:var(--red-bg);border-color:var(--red-bdr)':''}">
+            <span>€</span>
+            <input type="text" id="verschil-val" value="${saved?fmt2((parseFloat(saved.afgeroomd)||0)-((parseFloat(saved.ft_omzet)||0)-(parseFloat(saved.ft_bonnen)||0)-(parseFloat(saved.ft_cadeaubon)||0))):'0,00'}" readonly style="color:${saved&&((parseFloat(saved.afgeroomd)||0)-((parseFloat(saved.ft_omzet)||0)-(parseFloat(saved.ft_bonnen)||0)-(parseFloat(saved.ft_cadeaubon)||0)))<-0.01?'var(--red)':'var(--green-txt)'}">
+          </div></div>
+      </div>
+    </div>
+
+    <div class="opmerking-box">
+      <label>Opmerking / ontbrekend muntgeld meenemen woensdag</label>
+      <textarea id="week-opm" rows="2" placeholder="Bijv: te weinig €2 munten, woensdag meenemen..." ${isSaved?'readonly':''}>${saved?.opmerking||''}</textarea>
+    </div>
+
+    ${!isSaved?`<div class="action-row"><button class="clear-btn" id="wreset">Wissen</button><button class="save-btn" id="wsave">Weekafsluiting opslaan ✓</button></div>`:''}
+  `;
+
+  if(!isSaved){
+    function recalcWeek(){
+      const omzet=parseFloat(document.getElementById('ft-omzet').value)||0;
+      const bonnen=parseFloat(document.getElementById('ft-bonnen').value)||0;
+      const cadeaubon=parseFloat(document.getElementById('ft-cadeaubon').value)||0;
+      const afg=parseFloat(document.getElementById('afgeroomd').value)||0;
+      const verwacht=omzet-bonnen-cadeaubon;
+      const verschil=afg-verwacht;
+      document.getElementById('ft-verwacht').value=fmt2(verwacht);
+      document.getElementById('verschil-val').value=(verschil>=0?'+':'')+fmt2(verschil);
+      document.getElementById('verschil-val').style.color=Math.abs(verschil)<0.01?'var(--green-txt)':verschil<0?'var(--red)':'var(--gold-txt)';
+      document.getElementById('verschil-wrap').style.background=Math.abs(verschil)<0.01?'var(--gold-bg)':verschil<0?'var(--red-bg)':'var(--green-bg)';
+      document.getElementById('verschil-wrap').style.borderColor=Math.abs(verschil)<0.01?'var(--gold-bdr)':verschil<0?'var(--red-bdr)':'var(--green-bdr)';
+    }
+    ['ft-omzet','ft-bonnen','ft-cadeaubon','afgeroomd'].forEach(id=>document.getElementById(id).addEventListener('input',recalcWeek));
+    document.getElementById('wsave').addEventListener('click',async()=>{
+      await dbSave(wk,{
+        ft_omzet:document.getElementById('ft-omzet').value,
+        ft_bonnen:document.getElementById('ft-bonnen').value,
+        ft_cadeaubon:document.getElementById('ft-cadeaubon').value,
+        afgeroomd:document.getElementById('afgeroomd').value,
+        opmerking:document.getElementById('week-opm').value,
+        saved:true,savedBy:user.name
+      });
+      await renderKasWeek(tc);
+    });
+    document.getElementById('wreset').addEventListener('click',()=>{
+      ['ft-omzet','ft-bonnen','ft-cadeaubon','afgeroomd'].forEach(id=>document.getElementById(id).value='');
+      document.getElementById('week-opm').value='';
+      recalcWeek();
+    });
+  }
 }
 
 async function renderKasOverzicht(tc){
@@ -827,31 +968,403 @@ async function renderKasOverzicht(tc){
   const days=new Date(year,month+1,0).getDate(); const entries=[];
   for(let i=1;i<=days;i++){const dd=new Date(year,month,i);if(dd>new Date())break;if(OPEN_DAYS.has(dd.getDay())){const r=await dbLoad('kas:'+dKey(dd));if(r)entries.push({date:dd,...r});}}
   const monthName=kasDate.toLocaleDateString('nl-NL',{month:'long',year:'numeric'});
-  let totAfg=0,totVer=0,aantalVerschil=0;
-  entries.forEach(e=>{const t=calcKas(e);totAfg+=t.tot;if(t.verschil!==null){totVer+=t.verschil;if(Math.abs(t.verschil)>0.01)aantalVerschil++;}});
-  let rows='';
-  if(!entries.length) rows=`<tr><td colspan="4" style="padding:1.5rem;text-align:center;color:var(--hint)">Geen data voor deze maand</td></tr>`;
-  else entries.slice().reverse().forEach(e=>{
-    const t=calcKas(e);
-    const vTxt=t.verschil===null?'—':(t.verschil>=0?'+':'')+fmt2(t.verschil);
-    const vCls=t.verschil===null?'zero':Math.abs(t.verschil)<0.01?'zero':t.verschil>=0?'pos':'neg';
-    rows+=`<tr><td><strong>${fmtShort(e.date)}</strong><br><span style="font-size:11px;color:var(--hint)">${e.savedBy||''} ${e.savedAt||''}</span></td>
-      <td style="font-weight:500;color:var(--gold)">€ ${fmt2(t.tot)}</td>
-      <td style="font-size:12px;color:var(--muted)">€${fmt2(t.p1)} · €${fmt2(t.p2)} · €${fmt2(t.p3)}</td>
-      <td><span class="chip ${vCls}">€ ${vTxt}</span></td></tr>`;
+
+  // Also load week closings for this month
+  const weekData=[];
+  for(let i=1;i<=days;i++){
+    const dd=new Date(year,month,i);
+    if(dd.getDay()===1){ // Monday
+      const wk='kasweek:'+dKey(dd);
+      const r=await dbLoad(wk);
+      if(r) weekData.push({date:dd,...r});
+    }
+  }
+
+  let totAfg=0,aantalVerschil=0;
+  weekData.forEach(w=>{
+    totAfg+=parseFloat(w.afgeroomd)||0;
+    const verwacht=(parseFloat(w.ft_omzet)||0)-(parseFloat(w.ft_bonnen)||0)-(parseFloat(w.ft_cadeaubon)||0);
+    const verschil=(parseFloat(w.afgeroomd)||0)-verwacht;
+    if(Math.abs(verschil)>0.01) aantalVerschil++;
   });
-  tc.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.875rem;">
-    <div style="font-size:15px;font-weight:500;text-transform:capitalize">${monthName}</div>
-    <div style="display:flex;gap:6px;"><button class="nav-btn" id="kopm2">‹</button><button class="nav-btn" id="konm">›</button></div></div>
+
+  let dagRows='';
+  if(!entries.length) dagRows=`<tr><td colspan="4" style="padding:1.5rem;text-align:center;color:var(--hint)">Geen dagdata voor deze maand</td></tr>`;
+  else entries.slice().reverse().forEach(e=>{
+    const p1=parseFloat(e.pm1)||0,p2=parseFloat(e.pm2)||0,p3=parseFloat(e.pm3)||0,ka=parseFloat(e.kassa)||0;
+    const totGeteld=p1+p2+p3+ka;
+    const afrTot=(parseFloat(e.afr50_pm)||0)*50+(parseFloat(e.afr20_pm)||0)*20+(parseFloat(e.afr50_kas)||0)*50+(parseFloat(e.afr20_kas)||0)*20;
+    dagRows+=`<tr>
+      <td><strong>${fmtShort(e.date)}</strong><br><span style="font-size:11px;color:var(--hint)">${e.savedBy||''} ${e.savedAt||''}</span></td>
+      <td style="color:var(--gold);font-weight:500">€ ${fmt2(afrTot)}</td>
+      <td style="font-size:12px;color:var(--muted)">PM: €${fmt2(p1)} · €${fmt2(p2)} · €${fmt2(p3)}<br>Kas: €${fmt2(ka)}</td>
+      <td style="font-size:12px;color:var(--muted)">${e.opmerking||'—'}</td>
+    </tr>`;
+  });
+
+  let weekRows='';
+  if(!weekData.length) weekRows=`<tr><td colspan="4" style="padding:1rem;text-align:center;color:var(--hint)">Geen weekafsluitingen voor deze maand</td></tr>`;
+  else weekData.slice().reverse().forEach(w=>{
+    const verwacht=(parseFloat(w.ft_omzet)||0)-(parseFloat(w.ft_bonnen)||0)-(parseFloat(w.ft_cadeaubon)||0);
+    const verschil=(parseFloat(w.afgeroomd)||0)-verwacht;
+    const vCls=Math.abs(verschil)<0.01?'zero':verschil<0?'neg':'pos';
+    weekRows+=`<tr>
+      <td><strong>Week ${fmtShort(w.date)}</strong></td>
+      <td style="color:var(--gold);font-weight:500">€ ${fmt2(verwacht)}</td>
+      <td style="color:var(--gold);font-weight:500">€ ${fmt2(parseFloat(w.afgeroomd)||0)}</td>
+      <td><span class="chip ${vCls}">€ ${(verschil>=0?'+':'')+fmt2(verschil)}</span></td>
+    </tr>`;
+  });
+
+  tc.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.875rem;">
+      <div style="font-size:15px;font-weight:500;text-transform:capitalize">${monthName}</div>
+      <div style="display:flex;gap:6px;"><button class="nav-btn" id="kopm2">‹</button><button class="nav-btn" id="konm">›</button></div>
+    </div>
     <div class="month-stats">
       <div class="ms-card"><div class="ml">Totaal afgeroomd</div><div class="mv gold">€ ${fmt2(totAfg)}</div></div>
-      <div class="ms-card"><div class="ml">Totaal verschil</div><div class="mv ${Math.abs(totVer)>0.01?'red':'gold'}">€ ${(totVer>=0?'+':'')+fmt2(totVer)}</div></div>
-      <div class="ms-card"><div class="ml">Dagen met verschil</div><div class="mv ${aantalVerschil>0?'red':'gold'}">${aantalVerschil}</div></div>
+      <div class="ms-card"><div class="ml">Weken met verschil</div><div class="mv ${aantalVerschil>0?'red':''}">${aantalVerschil}</div></div>
     </div>
-    <div style="overflow-x:auto"><table class="mgr-table"><thead><tr><th>Datum</th><th>Totaal</th><th>Portemonnees</th><th>Verschil</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+
+    <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:.5rem;">Weekafsluitingen</div>
+    <div style="overflow-x:auto;margin-bottom:1.25rem">
+      <table class="mgr-table"><thead><tr><th>Week</th><th>Verwacht</th><th>Afgeroomd</th><th>Verschil</th></tr></thead><tbody>${weekRows}</tbody></table>
+    </div>
+
+    <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:.5rem;">Dagelijkse aftekeningen</div>
+    <div style="overflow-x:auto">
+      <table class="mgr-table"><thead><tr><th>Datum</th><th>Afgeroomd</th><th>Eindstand</th><th>Opmerking</th></tr></thead><tbody>${dagRows}</tbody></table>
+    </div>`;
+
   document.getElementById('kopm2').addEventListener('click',()=>{kasDate=new Date(year,month-1,28);renderKasOverzicht(tc);});
   document.getElementById('konm').addEventListener('click',()=>{const n=new Date(year,month+1,1);if(n<=new Date()){kasDate=n;renderKasOverzicht(tc);}});
 }
+
+
+
+async function updateKlachtBadge(){
+  try {
+    const raw=await dbLoad('klachten')||{};
+    const openCount=Object.values(raw).filter(k=>k.status==='open').length;
+    const navBtn=document.getElementById('bnav-klachten');
+    if(!navBtn) return;
+    const existing=navBtn.querySelector('.klacht-count');
+    if(existing) existing.remove();
+    if(openCount>0){
+      const badge=document.createElement('span');
+      badge.className='klacht-count';
+      badge.textContent=openCount;
+      navBtn.appendChild(badge);
+      navBtn.querySelector('svg').style.stroke='var(--red)';
+    } else {
+      navBtn.querySelector('svg').style.stroke=activeTab==='klachten'?'var(--gold)':'#999';
+    }
+  } catch(e){}
+}
+
+// ════ KLACHTEN ════════════════════════════════════════
+let showKlachtForm=false, klachtenFilter='open';
+const KLACHT_CATS=['Vergeten product','Verkeerd product','Kwaliteit / versheid','Te laat bezorgd','Klant wil terugbetaling','Anders'];
+
+async function renderKlachten(){
+  const c=document.getElementById('content');
+  // Load all complaints
+  const raw=await dbLoad('klachten') || {};
+  const alle=Object.entries(raw).map(([id,v])=>({id,...v})).sort((a,b)=>b.ts-a.ts);
+  const openCount=alle.filter(k=>k.status==='open').length;
+  const gefilterd=klachtenFilter==='alle'?alle:alle.filter(k=>k.status===klachtenFilter);
+
+  const filterBtns=['open','afgehandeld','alle'].map(f=>
+    `<button class="mod-tab ${klachtenFilter===f?'on':''}" data-kf="${f}">${f==='open'?`Open${openCount>0?`<span class="klacht-count">${openCount}</span>`:''}`:f==='afgehandeld'?'Afgehandeld':'Alle'}</button>`
+  ).join('');
+
+  const klachtHtml=gefilterd.length===0
+    ?`<div style="text-align:center;padding:2rem;color:var(--hint);font-size:14px">${klachtenFilter==='open'?'Geen openstaande klachten 👍':'Geen klachten gevonden'}</div>`
+    :gefilterd.map(k=>`
+      <div class="klacht-item ${k.status}">
+        <div class="klacht-hdr">
+          <div>
+            <div style="font-size:14px;font-weight:500;color:#1A1A1A">${k.categorie||'Klacht'}</div>
+            <div class="klacht-meta">
+              ${k.naam?`👤 ${k.naam}`:''} ${k.bonnummer?`· Bon #${k.bonnummer}`:''} · ${new Date(k.ts).toLocaleDateString('nl-NL',{day:'numeric',month:'short'})} ${new Date(k.ts).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}
+              ${k.ingevoerdDoor?`· door ${k.ingevoerdDoor}`:''}
+            </div>
+          </div>
+          <span class="klacht-status ${k.status}">${k.status==='open'?'Open':'Afgehandeld'}</span>
+        </div>
+        <div class="klacht-omschrijving">${k.omschrijving}</div>
+        ${k.status==='open'?`
+        <div class="klacht-actions">
+          <button class="afhandel-btn" data-kid="${k.id}">✓ Markeer als afgehandeld</button>
+          <button class="verwijder-btn" data-del="${k.id}">Verwijder</button>
+        </div>`:
+        k.afgehandeldDoor?`<div style="font-size:11px;color:var(--green-txt);margin-top:.5rem">✓ Afgehandeld door ${k.afgehandeldDoor}</div>`:''}
+      </div>`).join('');
+
+  const formHtml=showKlachtForm?`
+    <div class="klacht-form">
+      <div>
+        <label>Categorie</label>
+        <select id="kl-cat">
+          ${KLACHT_CATS.map(c=>`<option>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field-row">
+        <div><label>Naam klant <span style="color:var(--hint)">(optioneel)</span></label><input type="text" id="kl-naam" placeholder="Bijv. Jan de Vries"></div>
+        <div><label>Bonnummer <span style="color:var(--hint)">(optioneel)</span></label><input type="text" id="kl-bon" placeholder="Bijv. 1042"></div>
+      </div>
+      <div>
+        <label>Omschrijving <span style="color:var(--red)">*</span></label>
+        <textarea id="kl-omschrijving" rows="3" placeholder="Bijv: klant belde over slechte tonijn, wil contact met manager..."></textarea>
+      </div>
+      <div style="font-size:12px;color:var(--muted);background:var(--surface);padding:.625rem .875rem;border-radius:8px;">⚠️ Vul minimaal de omschrijving in + naam <em>of</em> bonnummer</div>
+      <div class="action-row" style="margin-bottom:0">
+        <button class="clear-btn" id="kl-cancel">Annuleren</button>
+        <button class="save-btn" id="kl-save">Klacht opslaan</button>
+      </div>
+    </div>` : '';
+
+  c.innerHTML=`
+    <div class="mod-title">Klachten</div>
+    ${!showKlachtForm?`<button class="save-btn" style="width:100%;margin-bottom:1rem" id="new-klacht-btn">+ Nieuwe klacht registreren</button>`:''}
+    ${formHtml}
+    <div class="mod-tab-row">${filterBtns}</div>
+    <div id="klachten-lijst">${klachtHtml}</div>`;
+
+  // Bind filter
+  c.querySelectorAll('[data-kf]').forEach(b=>b.addEventListener('click',()=>{klachtenFilter=b.dataset.kf;renderKlachten();}));
+
+  // New klacht button
+  const newBtn=document.getElementById('new-klacht-btn');
+  if(newBtn) newBtn.addEventListener('click',()=>{showKlachtForm=true;renderKlachten();});
+
+  // Cancel
+  const cancelBtn=document.getElementById('kl-cancel');
+  if(cancelBtn) cancelBtn.addEventListener('click',()=>{showKlachtForm=false;renderKlachten();});
+
+  // Save klacht
+  const saveBtn=document.getElementById('kl-save');
+  if(saveBtn) saveBtn.addEventListener('click',async()=>{
+    const omschrijving=document.getElementById('kl-omschrijving').value.trim();
+    const naam=document.getElementById('kl-naam').value.trim();
+    const bon=document.getElementById('kl-bon').value.trim();
+    const cat=document.getElementById('kl-cat').value;
+    if(!omschrijving){ alert('Vul een omschrijving in'); return; }
+    if(!naam&&!bon){ alert('Vul minimaal een naam of bonnummer in'); return; }
+    const ts=Date.now();
+    const id='k'+ts;
+    const existing=await dbLoad('klachten')||{};
+    existing[id]={categorie:cat,naam,bonnummer:bon,omschrijving,status:'open',ts,ingevoerdDoor:user.name};
+    await dbSave('klachten',existing);
+    showKlachtForm=false;
+    klachtenFilter='open';
+    await renderKlachten();
+  });
+
+  // Afhandelen
+  c.querySelectorAll('[data-kid]').forEach(btn=>btn.addEventListener('click',async()=>{
+    const existing=await dbLoad('klachten')||{};
+    if(existing[btn.dataset.kid]){
+      existing[btn.dataset.kid].status='afgehandeld';
+      existing[btn.dataset.kid].afgehandeldDoor=user.name;
+      await dbSave('klachten',existing);
+      await renderKlachten();
+    }
+  }));
+
+  // Verwijder
+  c.querySelectorAll('[data-del]').forEach(btn=>btn.addEventListener('click',async()=>{
+    if(!confirm('Klacht verwijderen?')) return;
+    const existing=await dbLoad('klachten')||{};
+    delete existing[btn.dataset.del];
+    await dbSave('klachten',existing);
+    await renderKlachten();
+  }));
+}
+
+// ════ OVERZICHT ══════════════════════════════════════
+let ovTab='week', ovWeekStart=null, ovMonth=new Date();
+
+function getWeekStart(d){
+  // Week starts on Wednesday
+  const day=d.getDay(); // 0=zo,1=ma,...,6=za
+  // Find previous Wednesday
+  const daysBack = day>=3 ? day-3 : day+4;
+  const ws=new Date(d);
+  ws.setDate(d.getDate()-daysBack);
+  ws.setHours(0,0,0,0);
+  return ws;
+}
+
+function getWeekDays(ws){
+  // wo=3,do=4,vr=5,za=6,zo=0
+  const days=[];
+  for(let i=0;i<5;i++){
+    const d=new Date(ws);
+    d.setDate(ws.getDate()+i);
+    days.push(d);
+  }
+  return days;
+}
+
+const DAG_NAMEN={0:'Zo',1:'Ma',2:'Di',3:'Wo',4:'Do',5:'Vr',6:'Za'};
+
+async function renderOverzicht(){
+  const c=document.getElementById('content');
+  c.innerHTML=`
+    <div class="mod-title">Overzicht</div>
+    <div class="mod-tab-row">
+      <button class="mod-tab ${ovTab==='week'?'on':''}" data-ot="week">Weekoverzicht</button>
+      <button class="mod-tab ${ovTab==='maand'?'on':''}" data-ot="maand">Maandoverzicht</button>
+    </div>
+    <div id="otc"></div>`;
+  c.querySelectorAll('[data-ot]').forEach(b=>b.addEventListener('click',()=>{ovTab=b.dataset.ot;renderOverzicht();}));
+  const otc=document.getElementById('otc');
+  if(ovTab==='week') await renderOvWeek(otc);
+  else await renderOvMaand(otc);
+}
+
+async function renderOvWeek(tc){
+  if(!ovWeekStart) ovWeekStart=getWeekStart(new Date());
+  const days=getWeekDays(ovWeekStart);
+  const today=new Date(); today.setHours(23,59,59,999);
+
+  // Load all data for the week
+  const pinData=[], kasData=[];
+  for(const d of days){
+    pinData.push(await dbLoad('pin:'+dKey(d)));
+    kasData.push(await dbLoad('kas:'+dKey(d)));
+  }
+
+  // Summary totals
+  let totPin=0, totKas=0, totBonnen=0, totVerschil=0, aantalVerschil=0;
+  days.forEach((_,i)=>{
+    const p=pinData[i], k=kasData[i];
+    if(p) totPin+=p.txs.reduce((s,v)=>s+(parseFloat(v)||0),0);
+    if(p) totBonnen+=(p.bonnen||[]).length;
+    if(k){
+      const t=calcKas(k);
+      totKas+=t.tot;
+      if(t.verschil!==null){totVerschil+=t.verschil;if(Math.abs(t.verschil)>0.01)aantalVerschil++;}
+    }
+  });
+
+  const weekLabel = `${fmtShort(days[0])} – ${fmtShort(days[4])}`;
+  const prevWs=new Date(ovWeekStart); prevWs.setDate(prevWs.getDate()-7);
+  const nextWs=new Date(ovWeekStart); nextWs.setDate(nextWs.getDate()+7);
+  const canNext=nextWs<=today;
+
+  let cards='';
+  days.forEach((d,i)=>{
+    const p=pinData[i], k=kasData[i];
+    const isFut=d>today;
+    const pinTot=p?p.txs.reduce((s,v)=>s+(parseFloat(v)||0),0):0;
+    const kasTot=k?calcKas(k):null;
+    const kasVer=kasTot?kasTot.verschil:null;
+    const nBon=p?(p.bonnen||[]).length:0;
+    const hasAlert=kasVer!==null&&Math.abs(kasVer)>0.01;
+    const pinSaved=p&&p.saved;
+    const kasSaved=k&&k.saved;
+
+    cards+=`<div class="ov-day-card${hasAlert?' has-alert':''}${isFut?' not-saved':''}">
+      <div class="ov-day-hdr">
+        <div class="day-name">${DAG_NAMEN[d.getDay()]}</div>
+        <div class="day-date">${d.getDate()} ${d.toLocaleDateString('nl-NL',{month:'short'})}</div>
+      </div>
+      <div class="ov-day-body">
+        ${isFut?`<div class="ov-not-saved">—</div>`:
+          !pinSaved&&!kasSaved?`<div class="ov-not-saved">Niet ingevuld</div>`:
+          `<div class="ov-row"><span class="ol">Pin</span><span class="ov gold">€ ${fmt2(pinTot)}</span></div>
+           <div class="ov-row"><span class="ol">Kas</span><span class="ov ${hasAlert?'warn':'ok'}">€ ${fmt2(kasTot?kasTot.tot:0)}</span></div>
+           ${kasVer!==null?`<div class="ov-row"><span class="ol">Verschil</span><span class="ov ${Math.abs(kasVer)<0.01?'ok':'warn'}">€ ${(kasVer>=0?'+':'')+fmt2(kasVer)}</span></div>`:''}
+           ${nBon>0?`<div class="ov-row"><span class="ol">Bonnen</span><span class="ov">${nBon}</span></div>`:''}`
+        }
+      </div>
+    </div>`;
+  });
+
+  tc.innerHTML=`
+    <div class="week-nav">
+      <button class="nav-btn" id="ov-prev">‹ Vorige</button>
+      <div style="text-align:center"><div class="wl">${weekLabel}</div></div>
+      <button class="nav-btn" id="ov-next" ${!canNext?'disabled style="opacity:.3"':''}>Volgende ›</button>
+    </div>
+    <div class="ov-summary">
+      <div class="ov-sum-card"><div class="sl">Totaal pin</div><div class="sv gold">€ ${fmt2(totPin)}</div></div>
+      <div class="ov-sum-card"><div class="sl">Totaal kas</div><div class="sv gold">€ ${fmt2(totKas)}</div></div>
+      <div class="ov-sum-card"><div class="sl">Cadeaubonnen</div><div class="sv">${totBonnen}</div></div>
+      <div class="ov-sum-card"><div class="sl">Kasverschillen</div><div class="sv ${aantalVerschil>0?'red':''}">${aantalVerschil}</div></div>
+    </div>
+    <div class="ov-week-grid">${cards}</div>
+  `;
+
+  document.getElementById('ov-prev').addEventListener('click',()=>{ovWeekStart=prevWs;renderOvWeek(tc);});
+  if(canNext) document.getElementById('ov-next').addEventListener('click',()=>{ovWeekStart=nextWs;renderOvWeek(tc);});
+}
+
+async function renderOvMaand(tc){
+  const year=ovMonth.getFullYear(), month=ovMonth.getMonth();
+  const days=new Date(year,month+1,0).getDate();
+  const monthName=ovMonth.toLocaleDateString('nl-NL',{month:'long',year:'numeric'});
+  const today=new Date(); today.setHours(23,59,59,999);
+
+  const entries=[];
+  for(let i=1;i<=days;i++){
+    const d=new Date(year,month,i);
+    if(d>today) break;
+    if(!OPEN_DAYS.has(d.getDay())) continue;
+    const p=await dbLoad('pin:'+dKey(d));
+    const k=await dbLoad('kas:'+dKey(d));
+    if(p||k) entries.push({date:d,p,k});
+  }
+
+  let totPin=0,totKas=0,totBonnen=0,aantalVerschil=0;
+  entries.forEach(({p,k})=>{
+    if(p) totPin+=p.txs.reduce((s,v)=>s+(parseFloat(v)||0),0);
+    if(p) totBonnen+=(p.bonnen||[]).length;
+    if(k){const t=calcKas(k);totKas+=t.tot;if(t.verschil!==null&&Math.abs(t.verschil)>0.01)aantalVerschil++;}
+  });
+
+  let rows='';
+  if(!entries.length) rows=`<tr><td colspan="5" style="padding:1.5rem;text-align:center;color:var(--hint)">Geen data voor deze maand</td></tr>`;
+  else entries.slice().reverse().forEach(({date,p,k})=>{
+    const pinTot=p?p.txs.reduce((s,v)=>s+(parseFloat(v)||0),0):0;
+    const kasTot=k?calcKas(k):null;
+    const kasVer=kasTot?kasTot.verschil:null;
+    const nBon=p?(p.bonnen||[]).length:0;
+    const hasAlert=kasVer!==null&&Math.abs(kasVer)>0.01;
+    const pinOpm=p&&p.opmerking?p.opmerking:'';
+    rows+=`<tr>
+      <td class="dt">${DAG_NAMEN[date.getDay()]} ${fmtShort(date)}${hasAlert?'<span class="alert-dot"></span>':''}</td>
+      <td style="font-weight:500;color:var(--gold)">${p?'€ '+fmt2(pinTot):'<span style="color:var(--hint)">—</span>'}</td>
+      <td>${k?`<span style="color:${hasAlert?'var(--red)':'var(--green-txt)'}">€ ${fmt2(kasTot.tot)}</span>`:'<span style="color:var(--hint)">—</span>'}</td>
+      <td>${kasVer!==null?`<span style="color:${Math.abs(kasVer)<0.01?'var(--green-txt)':'var(--red)'}">€ ${(kasVer>=0?'+':'')+fmt2(kasVer)}</span>`:'<span style="color:var(--hint)">—</span>'}</td>
+      <td>${nBon>0?`<span class="chip zero">${nBon}</span>`:''} ${pinOpm?`<span style="font-size:11px;color:var(--muted)">${pinOpm.slice(0,25)}${pinOpm.length>25?'…':''}</span>`:''}</td>
+    </tr>`;
+  });
+
+  tc.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.875rem;">
+      <div style="font-size:15px;font-weight:500;text-transform:capitalize">${monthName}</div>
+      <div style="display:flex;gap:6px;"><button class="nav-btn" id="om-prev">‹</button><button class="nav-btn" id="om-next">›</button></div>
+    </div>
+    <div class="ov-summary">
+      <div class="ov-sum-card"><div class="sl">Totaal pin</div><div class="sv gold">€ ${fmt2(totPin)}</div></div>
+      <div class="ov-sum-card"><div class="sl">Totaal kas</div><div class="sv gold">€ ${fmt2(totKas)}</div></div>
+      <div class="ov-sum-card"><div class="sl">Cadeaubonnen</div><div class="sv">${totBonnen}</div></div>
+      <div class="ov-sum-card"><div class="sl">Kasverschillen</div><div class="sv ${aantalVerschil>0?'red':''}">${aantalVerschil}</div></div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="ov-month-table">
+        <thead><tr><th>Dag</th><th>Pin totaal</th><th>Kas totaal</th><th>Verschil</th><th>Notities</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  document.getElementById('om-prev').addEventListener('click',()=>{ovMonth=new Date(year,month-1,1);renderOvMaand(tc);});
+  document.getElementById('om-next').addEventListener('click',()=>{const n=new Date(year,month+1,1);if(n<=new Date()){ovMonth=n;renderOvMaand(tc);}});
+}
+
 </script>
 </body>
 </html>
