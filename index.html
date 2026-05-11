@@ -15,6 +15,7 @@
 <script type="module">
   import { initializeApp }              from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey:            "AIzaSyByabr9VctlCTD51u7QZdDc37knQesRQAs",
@@ -26,19 +27,28 @@
     appId:             "1:329960344063:web:ed8840071f0a23241d7fca"
   };
 
-  const app = initializeApp(firebaseConfig);
-  const db  = getDatabase(app);
+  const app  = initializeApp(firebaseConfig);
+  const db   = getDatabase(app);
+  const auth = getAuth(app);
 
-  // Maak Firebase beschikbaar voor de rest van de app
-  window._fbSave = async (path, data) => {
-    await set(ref(db, path), data);
-  };
-  window._fbLoad = async (path) => {
-    const snap = await get(ref(db, path));
-    return snap.exists() ? snap.val() : null;
-  };
-  window._fbReady = true;
-  document.dispatchEvent(new Event('firebase-ready'));
+  // Automatisch anoniem inloggen — niemand merkt er iets van
+  signInAnonymously(auth)
+    .then(() => {
+      window._fbSave = async (path, data) => {
+        await set(ref(db, path), data);
+      };
+      window._fbLoad = async (path) => {
+        const snap = await get(ref(db, path));
+        return snap.exists() ? snap.val() : null;
+      };
+      window._fbReady = true;
+      document.dispatchEvent(new Event('firebase-ready'));
+    })
+    .catch((err) => {
+      console.error('Firebase anonieme login mislukt:', err);
+      window._fbReady = false;
+      document.dispatchEvent(new Event('firebase-ready'));
+    });
 </script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
